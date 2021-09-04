@@ -170,6 +170,9 @@ class Config {
 	const AUTH_MIN_INTERVAL = "AUTH_MIN_INTERVAL";
 	// minimum amount of seconds required between authentication attempts
 
+	const HTTP_USER_AGENT = "HTTP_USER_AGENT";
+	// http user agent (changing this is not recommended)
+
 	// default values for all of the above:
 	private const _DEFAULTS = [
 		Config::DB_TYPE => [ "pgsql", 									Config::T_STRING ],
@@ -224,6 +227,8 @@ class Config {
 		Config::CHECK_FOR_PLUGIN_UPDATES => [ "true",				Config::T_BOOL ],
 		Config::ENABLE_PLUGIN_INSTALLER => [ "true",					Config::T_BOOL ],
 		Config::AUTH_MIN_INTERVAL => [ 5,								Config::T_INT ],
+		Config::HTTP_USER_AGENT => [ 'Tiny Tiny RSS/%s (https://tt-rss.org/)',
+																					Config::T_STRING ],
 	];
 
 	private static $instance;
@@ -484,7 +489,8 @@ class Config {
 			array_push($errors, "Data export cache is not writable (chmod -R 777 ".self::get(Config::CACHE_DIR)."/export)");
 		}
 
-		if (self::get(Config::SINGLE_USER_MODE) && class_exists("PDO")) {
+		// ttrss_users won't be there on initial startup (before migrations are done)
+		if (!Config::is_migration_needed() && self::get(Config::SINGLE_USER_MODE)) {
 			if (UserHelper::get_login_by_id(1) != "admin") {
 				array_push($errors, "SINGLE_USER_MODE is enabled but default admin account (ID: 1) is not found.");
 			}
@@ -630,5 +636,9 @@ class Config {
 		if ($local_js) $rv .= javascript_tag($local_js);
 
 		return $rv;
+	}
+
+	static function get_user_agent() {
+		return sprintf(self::get(self::HTTP_USER_AGENT), self::get_version());
 	}
 }

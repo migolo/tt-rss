@@ -7,6 +7,7 @@ class Af_RedditImgur extends Plugin {
 	private $dump_json_data = false;
 	private $fallback_preview_urls = [];
 	private $default_max_score = 100;
+	private $generated_enclosures = [];
 
 	function about() {
 		return array(null,
@@ -247,6 +248,8 @@ class Af_RedditImgur extends Plugin {
 		$link_flairs = [];
 		$apply_nsfw_tags = FeedItem_Common::normalize_categories($this->host->get_array($this, "apply_nsfw_tags", []));
 
+		$this->generated_enclosures = [];
+
 		// embed anchor element, before reddit <table> post layout
 		$anchor = $xpath->query('//body/*')->item(0);
 
@@ -422,34 +425,15 @@ class Af_RedditImgur extends Plugin {
 			}
 
 			$matches = array();
-			if (!$found && (preg_match("/youtube\.com\/v\/([\w-]+)/", $entry_href, $matches) ||
-				preg_match("/youtube\.com\/.*?[\&\?]v=([\w-]+)/", $entry_href, $matches) ||
-				preg_match("/youtube\.com\/embed\/([\w-]+)/", $entry_href, $matches) ||
-				preg_match("/youtube\.com\/watch\?v=([\w-]+)/", $entry_href, $matches) ||
-				preg_match("/\/\/youtu.be\/([\w-]+)/", $entry_href, $matches))) {
-
-				$vid_id = $matches[1];
+			if (!$found && $vid_id = UrlHelper::url_to_youtube_vid($entry_href)) {
 
 				Debug::log("Handling as youtube: $vid_id", Debug::LOG_VERBOSE);
 
-				$iframe = $doc->createElement("iframe");
-				$iframe->setAttribute("class", "youtube-player");
-				$iframe->setAttribute("type", "text/html");
-				$iframe->setAttribute("width", "640");
-				$iframe->setAttribute("height", "385");
-				$iframe->setAttribute("src", "https://www.youtube.com/embed/$vid_id");
-				$iframe->setAttribute("allowfullscreen", "1");
-				$iframe->setAttribute("frameborder", "0");
+				/* normalize video URL for af_youtube_... plugins */
+				$video_url = "https://www.youtube.com/v/$vid_id";
 
-				//$br = $doc->createElement('br');
-				//$entry->parentNode->insertBefore($iframe, $entry);
-				//$entry->parentNode->insertBefore($br, $entry);
-
-				// reparent generated iframe because it doesn't scale well inside <td>
-				if ($anchor)
-					$anchor->parentNode->insertBefore($iframe, $anchor);
-				else
-					$entry->parentNode->insertBefore($iframe, $entry);
+				/* push generated video URL to enclosures so that youtube embed plugins would deal with it later (if enabled) */
+				$this->generated_enclosures[] = [$video_url, "text/html", null, null, '', ''];
 
 				$found = true;
 			}
@@ -635,7 +619,7 @@ class Af_RedditImgur extends Plugin {
 
 				if ($node && $found) {
 					$article["content"] = $doc->saveHTML($node);
-					$article["enclosures"] = [];
+					$article["enclosures"] = $this->generated_enclosures;
 				} else if ($content_link) {
 					$article = $this->readability($article, $content_link->getAttribute("href"), $doc, $xpath);
 				}
@@ -801,7 +785,8 @@ class Af_RedditImgur extends Plugin {
 
 	}
 
-	private function get_header($url, $header, $useragent = SELF_USER_AGENT) {
+	/** $useragent defaults to Config::get_user_agent() */
+	private function get_header($url, $header, $useragent = false) {
 		$ret = false;
 
 		if (function_exists("curl_init")) {
@@ -811,7 +796,7 @@ class Af_RedditImgur extends Plugin {
 			curl_setopt($ch, CURLOPT_HEADER, true);
 			curl_setopt($ch, CURLOPT_NOBODY, true);
 			curl_setopt($ch, CURLOPT_FOLLOWLOCATION, !ini_get("open_basedir"));
-			curl_setopt($ch, CURLOPT_USERAGENT, $useragent);
+			curl_setopt($ch, CURLOPT_USERAGENT, $useragent ? $useragent : Config::get_user_agent());
 
 			@curl_exec($ch);
 			$ret = curl_getinfo($ch, $header);
@@ -820,11 +805,11 @@ class Af_RedditImgur extends Plugin {
 		return $ret;
 	}
 
-	private function get_content_type($url, $useragent = SELF_USER_AGENT) {
+	private function get_content_type($url, $useragent = false) {
 		return $this->get_header($url, CURLINFO_CONTENT_TYPE, $useragent);
 	}
 
-	private function get_location($url, $useragent = SELF_USER_AGENT) {
+	private function get_location($url, $useragent = false) {
 		return $this->get_header($url, CURLINFO_EFFECTIVE_URL, $useragent);
 	}
 
