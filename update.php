@@ -12,7 +12,7 @@
 
 	Config::sanity_check();
 
-	function make_stampfile($filename) {
+	function make_stampfile(string $filename): bool {
 		$fp = fopen(Config::get(Config::LOCK_DIRECTORY) . "/$filename", "w");
 
 		if (flock($fp, LOCK_EX | LOCK_NB)) {
@@ -25,7 +25,7 @@
 		}
 	}
 
-	function cleanup_tags($days = 14, $limit = 1000) {
+	function cleanup_tags(int $days = 14, int $limit = 1000): int {
 
 		$days = (int) $days;
 
@@ -86,9 +86,10 @@
 		"gen-search-idx" => "generate basic PostgreSQL fulltext search index",
 		"plugins-list" => "list installed plugins",
 		"debug-feed:" => ["N", "update specified feed with debug output enabled"],
-		"debug-force-refetch" => "debug update: force refetch feed data",
-		"debug-force-rehash" => "debug update: force rehash articles",
+		"force-refetch" => "debug update: force refetch feed data",
+		"force-rehash" => "debug update: force rehash articles",
 		"opml-export:" => ["USER:FILE", "export OPML of USER to FILE"],
+		"opml-import:" => ["USER:FILE", "import OPML for USER from FILE"],
 		"user-list" => "list all users",
 #		"user-add:" => ["USER[:PASSWORD]", "add USER, optionally without prompting for PASSWORD"],
 #		"user-remove:" => ["USERNAME", "remove specified user"],
@@ -96,7 +97,7 @@
 	];
 
 	foreach (PluginHost::getInstance()->get_commands() as $command => $data) {
-		$options_map[$command . $data["suffix"]] = [ $data["arghelp"] ?? "", $data["description"] ];
+		$options_map[$command . $data["suffix"]] = [ $data["arghelp"], $data["description"] ];
 	}
 
 	if (php_sapi_name() != "cli") {
@@ -107,7 +108,7 @@
 
 	$options = getopt("", array_keys($options_map));
 
-	if (count($options) == 0 || isset($options["help"]) ) {
+	if ($options === false || count($options) == 0 || isset($options["help"]) ) {
 		print "Tiny Tiny RSS CLI management tool\n";
 		print "=================================\n";
 		print "Options:\n\n";
@@ -209,6 +210,7 @@
 	}
 
 	if (isset($options["daemon"])) {
+		// @phpstan-ignore-next-line
 		while (true) {
 			$quiet = (isset($options["quiet"])) ? "--quiet" : "";
 			$log = isset($options['log']) ? '--log '.$options['log'] : '';
@@ -376,9 +378,25 @@
 		Debug::log("Exporting feeds of user $user to $filename as OPML...");
 
 		if ($owner_uid = UserHelper::find_user_by_login($user)) {
-			$opml = new OPML("");
+			$opml = new OPML([]);
 
 			$rc = $opml->opml_export($filename, $owner_uid, false, true, true);
+
+			Debug::log($rc ? "Success." : "Failed.");
+		} else {
+			Debug::log("User not found: $user");
+		}
+	}
+
+	if (isset($options["opml-import"])) {
+		list ($user, $filename) = explode(":", $options["opml-import"], 2);
+
+		Debug::log("Importing feeds of user $user from OPML file $filename...");
+
+		if ($owner_uid = UserHelper::find_user_by_login($user)) {
+			$opml = new OPML([]);
+
+			$rc = $opml->opml_import($owner_uid, $filename);
 
 			Debug::log($rc ? "Success." : "Failed.");
 		} else {
