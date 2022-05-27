@@ -1662,7 +1662,7 @@ class RSSUtils {
 		self::cleanup_feed_icons();
 		self::disable_failed_feeds();
 
-		Article::_purge_orphans();
+		//Article::_purge_orphans();
 		self::cleanup_counters_cache();
 
 		PluginHost::getInstance()->run_hooks(PluginHost::HOOK_HOUSE_KEEPING);
