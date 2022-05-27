@@ -818,7 +818,7 @@ body.ttrss_main {
 		}
 
 		&[data-auto-catchup="true"] #headlines-spacer {
-			height : 100vh;
+			height : calc(100vh - 32px);
 		}
 
 		.dijitCheckBox {
@@ -1062,6 +1062,10 @@ body.ttrss_main {
 		display : block;
 		margin-top : 10px;
 		max-width : 120px;
+	}
+
+	.attachments-inline a {
+		word-break: break-all;
 	}
 
 	#filterDlg_feeds select {

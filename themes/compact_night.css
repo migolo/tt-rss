@@ -691,7 +691,7 @@ body.ttrss_main #headlines-frame[data-is-vfeed="false"] .hl .icon-feed {
   display: none;
 }
 body.ttrss_main #headlines-frame[data-auto-catchup="true"] #headlines-spacer {
-  height: 100vh;
+  height: calc(100vh - 32px);
 }
 body.ttrss_main #headlines-frame .dijitCheckBox {
   margin-right: 4px;
@@ -896,6 +896,9 @@ body.ttrss_main select.attachments {
   display: block;
   margin-top: 10px;
   max-width: 120px;
+}
+body.ttrss_main .attachments-inline a {
+  word-break: break-all;
 }
 body.ttrss_main #filterDlg_feeds select {
   height: 150px;
@@ -1475,8 +1478,7 @@ body.ttrss_utility hr {
   box-shadow: 0 1px 1px -1px rgba(0, 0, 0, 0.1);
   border: 0 solid #222;
   border-bottom-width: 1px;
-  background: #333 ! important;
-  opacity: 0.9;
+  background: rgba(51, 51, 51, 0.9) ! important;
   backdrop-filter: blur(6px);
 }
 body.ttrss_prefs {
