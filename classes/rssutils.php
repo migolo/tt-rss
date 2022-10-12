@@ -39,7 +39,7 @@ class RSSUtils {
 
 		// check icon files once every Config::get(Config::CACHE_MAX_DAYS) days
 		$icon_files = array_filter(glob(Config::get(Config::ICONS_DIR) . "/*.ico"),
-			function($f) { return filemtime($f) < time() - 86400 * Config::get(Config::CACHE_MAX_DAYS); });
+			fn(string $f) => filemtime($f) < time() - 86400 * Config::get(Config::CACHE_MAX_DAYS));
 
 		foreach ($icon_files as $icon) {
 			$feed_id = basename($icon, ".ico");
@@ -447,7 +447,7 @@ class RSSUtils {
 				Debug::log("not using CURL due to open_basedir restrictions", Debug::LOG_VERBOSE);
 			}
 
-			if (time() - strtotime($feed_obj->last_unconditional) > Config::get(Config::MAX_CONDITIONAL_INTERVAL)) {
+			if (time() - strtotime($feed_obj->last_unconditional ?? "") > Config::get(Config::MAX_CONDITIONAL_INTERVAL)) {
 				Debug::log("maximum allowed interval for conditional requests exceeded, forcing refetch", Debug::LOG_VERBOSE);
 
 				$force_refetch = true;
@@ -662,7 +662,7 @@ class RSSUtils {
 					print_r($item);
 				}
 
-				if (ini_get("max_execution_time") > 0 && time() - $tstart >= ini_get("max_execution_time") * 0.7) {
+				if (ini_get("max_execution_time") > 0 && time() - $tstart >= ((float)ini_get("max_execution_time") * 0.7)) {
 					Debug::log("looks like there's too many articles to process at once, breaking out.", Debug::LOG_VERBOSE);
 					$pdo->commit();
 					break;
@@ -733,7 +733,7 @@ class RSSUtils {
 					$article_labels = Article::_get_labels($base_entry_id, $feed_obj->owner_uid);
 
 					$existing_tags = Article::_get_tags($base_entry_id, $feed_obj->owner_uid);
-					$entry_tags = array_unique(array_merge($entry_tags, $existing_tags));
+					$entry_tags = array_unique([...$entry_tags, ...$existing_tags]);
 				} else {
 					$base_entry_id = false;
 					$entry_stored_hash = "";
@@ -865,7 +865,7 @@ class RSSUtils {
 				$pluginhost->run_hooks(PluginHost::HOOK_FILTER_TRIGGERED,
 					$feed, $feed_obj->owner_uid, $article, $matched_filters, $matched_rules, $article_filters);
 
-				$matched_filter_ids = array_map(function($f) { return $f['id']; }, $matched_filters);
+				$matched_filter_ids = array_map(fn(array $f) => $f['id'], $matched_filters);
 
 				if (count($matched_filter_ids) > 0) {
 					$filter_objs = ORM::for_table('ttrss_filters2')
@@ -1190,8 +1190,7 @@ class RSSUtils {
 				// check for manual tags (we have to do it here since they're loaded from filters)
 				foreach ($article_filters as $f) {
 					if ($f["type"] == "tag") {
-						$entry_tags = array_merge($entry_tags,
-							FeedItem_Common::normalize_categories(explode(",", $f["param"])));
+						$entry_tags = [...$entry_tags, ...FeedItem_Common::normalize_categories(explode(",", $f["param"]))];
 					}
 				}
 
@@ -1796,12 +1795,10 @@ class RSSUtils {
 				owner_uid = ? AND enabled = true ORDER BY order_id, title");
 		$sth->execute([$owner_uid]);
 
-		$check_cats = array_merge(
-			Feeds::_get_parent_cats($cat_id, $owner_uid),
-			[$cat_id]);
+		$check_cats = [...Feeds::_get_parent_cats($cat_id, $owner_uid), $cat_id];
 
 		$check_cats_str = join(",", $check_cats);
-		$check_cats_fullids = array_map(function($a) { return "CAT:$a"; }, $check_cats);
+		$check_cats_fullids = array_map(fn(int $a) => "CAT:$a", $check_cats);
 
 		while ($line = $sth->fetch()) {
 			$filter_id = $line["id"];

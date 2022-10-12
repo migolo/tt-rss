@@ -6,7 +6,7 @@ class Config {
 	const T_STRING = 2;
 	const T_INT = 3;
 
-	const SCHEMA_VERSION = 146;
+	const SCHEMA_VERSION = 147;
 
 	/** override default values, defined below in _DEFAULTS[], prefixing with _ENVVAR_PREFIX:
 	 *
@@ -465,9 +465,11 @@ class Config {
 	/** generates reference self_url_path (no trailing slash) */
 	static function make_self_url() : string {
 		$proto = self::is_server_https() ? 'https' : 'http';
-		$self_url_path = $proto . '://' . $_SERVER["HTTP_HOST"] . $_SERVER["REQUEST_URI"];
+
+		$self_url_path = $proto . '://' . $_SERVER["HTTP_HOST"] . parse_url($_SERVER["REQUEST_URI"], PHP_URL_PATH);
 
 		$self_url_path = preg_replace("/\w+\.php(\?.*$)?$/", "", $self_url_path);
+		#$self_url_path = preg_replace("/(\?.*$)?$/", "", $self_url_path);
 
 		if (substr($self_url_path, -1) === "/") {
 			return substr($self_url_path, 0, -1);
@@ -522,8 +524,8 @@ class Config {
 				array_push($errors, "Please don't run this script as root.");
 			}
 
-			if (version_compare(PHP_VERSION, '7.1.0', '<')) {
-				array_push($errors, "PHP version 7.1.0 or newer required. You're using " . PHP_VERSION . ".");
+			if (version_compare(PHP_VERSION, '7.4.0', '<')) {
+				array_push($errors, "PHP version 7.4.0 or newer required. You're using " . PHP_VERSION . ".");
 			}
 
 			if (!class_exists("UConverter")) {

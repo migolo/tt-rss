@@ -17,13 +17,13 @@ class FeedItem_RSS extends FeedItem_Common {
 		$pubDate = $this->elem->getElementsByTagName("pubDate")->item(0);
 
 		if ($pubDate) {
-			return strtotime($pubDate->nodeValue);
+			return strtotime($pubDate->nodeValue ?? '');
 		}
 
 		$date = $this->xpath->query("dc:date", $this->elem)->item(0);
 
 		if ($date) {
-			return strtotime($date->nodeValue);
+			return strtotime($date->nodeValue ?? '');
 		}
 
 		// consistent with strtotime failing to parse
@@ -153,7 +153,7 @@ class FeedItem_RSS extends FeedItem_Common {
 			array_push($encs, $enc);
 		}
 
-		$encs = array_merge($encs, parent::get_enclosures());
+		array_push($encs, ...parent::get_enclosures());
 
 		return $encs;
 	}
