@@ -286,7 +286,7 @@ class API extends Handler {
 			$sth = $this->pdo->prepare("UPDATE ttrss_user_entries SET
 				$field = $set_to $additional_fields
 				WHERE ref_id IN ($article_qmarks) AND owner_uid = ?");
-			$sth->execute(array_merge($article_ids, [$_SESSION['uid']]));
+			$sth->execute([...$article_ids, $_SESSION['uid']]);
 
 			$num_updated = $sth->rowCount();
 
@@ -333,7 +333,7 @@ class API extends Handler {
 					'published' => self::_param_to_bool($entry->published),
 					'comments' => $entry->comments,
 					'author' => $entry->author,
-					'updated' => (int) strtotime($entry->updated),
+					'updated' => (int) strtotime($entry->updated ?? ''),
 					'feed_id' => $entry->feed_id,
 					'attachments' => Article::_get_enclosures($entry->id),
 					'score' => (int) $entry->score,
@@ -544,6 +544,29 @@ class API extends Handler {
 
 			/* Virtual feeds */
 
+			$vfeeds = PluginHost::getInstance()->get_feeds(-1);
+
+			if (is_array($vfeeds)) {
+				foreach ($vfeeds as $feed) {
+					if (!implements_interface($feed['sender'], 'IVirtualFeed'))
+						continue;
+
+					/** @var IVirtualFeed $feed['sender'] */
+					$unread = $feed['sender']->get_unread($feed['id']);
+
+					if ($unread || !$unread_only) {
+						$row = [
+							'id' => PluginHost::pfeed_to_feed_id($feed['id']),
+							'title' => $feed['title'],
+							'unread' => $unread,
+							'cat_id' => -1,
+						];
+
+						array_push($feeds, $row);
+					}
+				}
+			}
+
 			if ($cat_id == -4 || $cat_id == -1) {
 				foreach ([-1, -2, -3, -4, -6, 0] as $i) {
 					$unread = Feeds::_get_counters($i, false, true);
@@ -618,7 +641,7 @@ class API extends Handler {
 						'unread' => (int) $unread,
 						'has_icon' => $has_icon,
 						'cat_id' => (int) $feed->cat_id,
-						'last_updated' => (int) strtotime($feed->last_updated),
+						'last_updated' => (int) strtotime($feed->last_updated ?? ''),
 						'order_id' => (int) $feed->order_id,
 					];
 
@@ -648,7 +671,7 @@ class API extends Handler {
 					->find_one($feed_id);
 
 				if ($feed) {
-					$last_updated = strtotime($feed->last_updated);
+					$last_updated = strtotime($feed->last_updated ?? '');
 					$cache_images = self::_param_to_bool($feed->cache_images);
 
 					if (!$cache_images && time() - $last_updated > 120) {
@@ -675,7 +698,50 @@ class API extends Handler {
 				"skip_first_id_check" => $skip_first_id_check
 			);
 
-			$qfh_ret = Feeds::_get_headlines($params);
+			$qfh_ret = [];
+
+			if (!$is_cat && is_numeric($feed_id) && $feed_id < PLUGIN_FEED_BASE_INDEX && $feed_id > LABEL_BASE_INDEX) {
+				$pfeed_id = PluginHost::feed_to_pfeed_id($feed_id);
+
+				/** @var IVirtualFeed|false $handler */
+				$handler = PluginHost::getInstance()->get_feed_handler($pfeed_id);
+
+				if ($handler) {
+					$params = array(
+						"feed" => $feed_id,
+						"limit" => $limit,
+						"view_mode" => $view_mode,
+						"cat_view" => $is_cat,
+						"search" => $search,
+						"override_order" => $order,
+						"offset" => $offset,
+						"since_id" => 0,
+						"include_children" => $include_nested,
+						"check_first_id" => $check_first_id,
+						"skip_first_id_check" => $skip_first_id_check
+					);
+
+					$qfh_ret = $handler->get_headlines($pfeed_id, $params);
+				}
+
+			} else {
+
+				$params = array(
+					"feed" => $feed_id,
+					"limit" => $limit,
+					"view_mode" => $view_mode,
+					"cat_view" => $is_cat,
+					"search" => $search,
+					"override_order" => $order,
+					"offset" => $offset,
+					"since_id" => $since_id,
+					"include_children" => $include_nested,
+					"check_first_id" => $check_first_id,
+					"skip_first_id_check" => $skip_first_id_check
+				);
+
+				$qfh_ret = Feeds::_get_headlines($params);
+			}
 
 			$result = $qfh_ret[0];
 			$feed_title = $qfh_ret[1];
@@ -725,7 +791,7 @@ class API extends Handler {
 						"unread" => self::_param_to_bool($line["unread"]),
 						"marked" => self::_param_to_bool($line["marked"]),
 						"published" => self::_param_to_bool($line["published"]),
-						"updated" => (int)strtotime($line["updated"]),
+						"updated" => (int)strtotime($line["updated"] ?? ''),
 						"is_updated" => $is_updated,
 						"title" => $line["title"],
 						"link" => $line["link"],
@@ -835,7 +901,7 @@ class API extends Handler {
 	}
 
 	function getFeedTree(): bool {
-		$include_empty = self::_param_to_bool(clean($_REQUEST['include_empty']));
+		$include_empty = self::_param_to_bool($_REQUEST['include_empty'] ?? false);
 
 		$pf = new Pref_Feeds($_REQUEST);
 

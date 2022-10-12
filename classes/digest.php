@@ -22,7 +22,7 @@ class Digest
 		while ($line = $res->fetch()) {
 
 			if (get_pref(Prefs::DIGEST_ENABLE, $line['id'])) {
-				$preferred_ts = strtotime(get_pref(Prefs::DIGEST_PREFERRED_TIME, $line['id']));
+				$preferred_ts = strtotime(get_pref(Prefs::DIGEST_PREFERRED_TIME, $line['id']) ?? '');
 
 				// try to send digests within 2 hours of preferred time
 				if ($preferred_ts && time() >= $preferred_ts &&
@@ -163,9 +163,7 @@ class Digest
 			$article_labels_formatted = "";
 
 			if (is_array($article_labels) && count($article_labels) > 0) {
-				$article_labels_formatted = implode(", ", array_map(function($a) {
-					return $a[1];
-				}, $article_labels));
+				$article_labels_formatted = implode(", ", array_map(fn($a) => $a[1], $article_labels));
 			}
 
 			$tpl->setVariable('FEED_TITLE', $line["feed_title"]);

@@ -19,19 +19,19 @@ class FeedItem_Atom extends FeedItem_Common {
 		$updated = $this->elem->getElementsByTagName("updated")->item(0);
 
 		if ($updated) {
-			return strtotime($updated->nodeValue);
+			return strtotime($updated->nodeValue ?? '');
 		}
 
 		$published = $this->elem->getElementsByTagName("published")->item(0);
 
 		if ($published) {
-			return strtotime($published->nodeValue);
+			return strtotime($published->nodeValue ?? '');
 		}
 
 		$date = $this->xpath->query("dc:date", $this->elem)->item(0);
 
 		if ($date) {
-			return strtotime($date->nodeValue);
+			return strtotime($date->nodeValue ?? '');
 		}
 
 		// consistent with strtotime failing to parse
@@ -43,7 +43,8 @@ class FeedItem_Atom extends FeedItem_Common {
 		$links = $this->elem->getElementsByTagName("link");
 
 		foreach ($links as $link) {
-			if ($link && $link->hasAttribute("href") &&
+			/** @phpstan-ignore-next-line */
+			if ($link->hasAttribute("href") &&
 				(!$link->hasAttribute("rel")
 					|| $link->getAttribute("rel") == "alternate"
 					|| $link->getAttribute("rel") == "standout")) {
@@ -180,7 +181,8 @@ class FeedItem_Atom extends FeedItem_Common {
 		$encs = [];
 
 		foreach ($links as $link) {
-			if ($link && $link->hasAttribute("href") && $link->hasAttribute("rel")) {
+			/** @phpstan-ignore-next-line */
+			if ($link->hasAttribute("href") && $link->hasAttribute("rel")) {
 				$base = $this->xpath->evaluate("string(ancestor-or-self::*[@xml:base][1]/@xml:base)", $link);
 
 				if ($link->getAttribute("rel") == "enclosure") {
@@ -199,7 +201,7 @@ class FeedItem_Atom extends FeedItem_Common {
 			}
 		}
 
-		$encs = array_merge($encs, parent::get_enclosures());
+		array_push($encs, ...parent::get_enclosures());
 
 		return $encs;
 	}

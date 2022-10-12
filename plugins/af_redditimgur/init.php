@@ -376,11 +376,11 @@ class Af_RedditImgur extends Plugin {
 		}
 
 		if ($post_is_nsfw && count($apply_nsfw_tags) > 0) {
-			$article["tags"] = array_merge($article["tags"], $apply_nsfw_tags);
+			array_push($article["tags"], ...$apply_nsfw_tags);
 		}
 
 		if (count($link_flairs) > 0) {
-			$article["tags"] = array_merge($article["tags"], FeedItem_Common::normalize_categories($link_flairs));
+			array_push($article["tags"], ...FeedItem_Common::normalize_categories($link_flairs));
 		}
 
 		$article["num_comments"] = $num_comments;
@@ -397,7 +397,7 @@ class Af_RedditImgur extends Plugin {
 		$entries = $xpath->query('//a[@href]');
 
 		foreach ($entries as $entry) {
-			$entry_href = $entry->getAttribute("href");
+			$entry_href = UrlHelper::rewrite_relative($article["link"], $entry->getAttribute("href"), "a");
 
 			$matches = [];
 
@@ -653,10 +653,14 @@ class Af_RedditImgur extends Plugin {
 				/** @var ?DOMElement $content_link */
 				$content_link = $xpath->query("(//a[contains(., '[link]')])")->item(0);
 
-				if ($this->host->get($this, "enable_content_dupcheck")) {
+				if ($content_link) {
+					$content_href = UrlHelper::rewrite_relative($article["link"], $content_link->getAttribute("href"), "a");
 
-					if ($content_link) {
-						$content_href = $content_link->getAttribute("href");
+					if ($this->is_blacklisted($content_href))
+						return $article;
+
+					if ($this->host->get($this, "enable_content_dupcheck")) {
+
 						$entry_guid = $article["guid_hashed"];
 						$owner_uid = $article["owner_uid"];
 
@@ -682,20 +686,16 @@ class Af_RedditImgur extends Plugin {
 							if ($num_found > 0) $article["force_catchup"] = true;
 						}
 					}
-				}
 
-				if ($content_link && $this->is_blacklisted($content_link->getAttribute("href")))
-					return $article;
+					$found = $this->inline_stuff($article, $doc, $xpath);
+					$node = $doc->getElementsByTagName('body')->item(0);
 
-				$found = $this->inline_stuff($article, $doc, $xpath);
-
-				$node = $doc->getElementsByTagName('body')->item(0);
-
-				if ($node && $found) {
-					$article["content"] = $doc->saveHTML($node);
-					$article["enclosures"] = $this->generated_enclosures;
-				} else if ($content_link) {
-					$article = $this->readability($article, $content_link->getAttribute("href"), $doc, $xpath);
+					if ($node && $found) {
+						$article["content"] = $doc->saveHTML($node);
+						$article["enclosures"] = $this->generated_enclosures;
+					} else {
+						$article = $this->readability($article, $content_href, $doc, $xpath);
+					}
 				}
 			}
 		}
@@ -903,7 +903,7 @@ class Af_RedditImgur extends Plugin {
 
 			// do not try to embed posts linking back to other reddit posts
 			// readability.php requires PHP 5.6
-			if ($url &&	strpos($url, "reddit.com") === false && version_compare(PHP_VERSION, '5.6.0', '>=')) {
+			if ($url &&	strpos($url, "reddit.com") === false) {
 
 				/* link may lead to a huge video file or whatever, we need to check content type before trying to
 				parse it which p much requires curl */
@@ -936,11 +936,12 @@ class Af_RedditImgur extends Plugin {
 	private function is_blacklisted(string $src, array $also_blacklist = []) : bool {
 		$src_domain = parse_url($src, PHP_URL_HOST);
 
-		foreach (array_merge($this->domain_blacklist, $also_blacklist) as $domain) {
-			if (strstr($src_domain, $domain) !== false) {
-				return true;
+		if ($src_domain)
+		foreach ([...$this->domain_blacklist, ...$also_blacklist] as $domain) {
+				if (strstr($src_domain, $domain) !== false) {
+					return true;
+				}
 			}
-		}
 
 		return false;
 	}

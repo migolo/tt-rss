@@ -69,6 +69,7 @@
 					"de_DE" => "Deutsch",
 					"fa"    => "Persian (Farsi)",
 					"fr_FR" => "Français",
+					"gl"    => "Galego",
 					"hu_HU" => "Magyar (Hungarian)",
 					"it_IT" => "Italiano",
 					"ja_JP" => "日本語 (Japanese)",
@@ -108,8 +109,7 @@
 				$valid_langs[$lang] = $t;
 
 				$lang = substr($lang, 0, 2);
-				if (!isset($valid_langs[$lang]))
-					$valid_langs[$lang] = $t;
+				$valid_langs[$lang] ??= $t;
 			}
 
 			// break up string into pieces (languages and q factors)
