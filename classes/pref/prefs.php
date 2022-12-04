@@ -240,7 +240,7 @@ class Pref_Prefs extends Handler_Protected {
 			$user->full_name = clean($_POST['full_name']);
 
 			if ($user->email != $new_email) {
-				Logger::log(E_USER_NOTICE, "Email address of user ".$user->login." has been changed to ${new_email}.");
+				Logger::log(E_USER_NOTICE, "Email address of user {$user->login} has been changed to {$new_email}.");
 
 				if ($user->email) {
 					$mailer = new Mailer();
@@ -251,7 +251,7 @@ class Pref_Prefs extends Handler_Protected {
 
 					$tpl->setVariable('LOGIN', $user->login);
 					$tpl->setVariable('NEWMAIL', $new_email);
-					$tpl->setVariable('TTRSS_HOST', Config::get(Config::SELF_URL_PATH));
+					$tpl->setVariable('TTRSS_HOST', Config::get_self_url());
 
 					$tpl->addBlock('message');
 
@@ -1002,7 +1002,7 @@ class Pref_Prefs extends Handler_Protected {
 				$tpl->readTemplateFromFile("otp_disabled_template.txt");
 
 				$tpl->setVariable('LOGIN', $row["login"]);
-				$tpl->setVariable('TTRSS_HOST', Config::get(Config::SELF_URL_PATH));
+				$tpl->setVariable('TTRSS_HOST', Config::get_self_url());
 
 				$tpl->addBlock('message');
 

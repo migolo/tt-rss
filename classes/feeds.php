@@ -1163,11 +1163,28 @@ class Feeds extends Handler_Protected {
 	}
 
 	static function _get_icon_file(int $feed_id): string {
-		return Config::get(Config::ICONS_DIR) . "/$feed_id.ico";
+		$favicon_cache = new DiskCache('feed-icons');
+
+		return $favicon_cache->get_full_path((string)$feed_id);
 	}
 
-	static function _has_icon(int $id): bool {
-		return is_file(Config::get(Config::ICONS_DIR) . "/$id.ico") && filesize(Config::get(Config::ICONS_DIR) . "/$id.ico") > 0;
+	static function _get_icon_url(int $feed_id, string $fallback_url = "") : string {
+		if (self::_has_icon($feed_id)) {
+			$icon_url = Config::get_self_url() . "/public.php?" . http_build_query([
+				'op' => 'feed_icon',
+				'id' => $feed_id,
+			]);
+
+			return $icon_url;
+		}
+
+		return $fallback_url;
+	}
+
+	static function _has_icon(int $feed_id): bool {
+		$favicon_cache = new DiskCache('feed-icons');
+
+		return $favicon_cache->exists((string)$feed_id);
 	}
 
 	/**
@@ -1191,16 +1208,9 @@ class Feeds extends Handler_Protected {
 				if ($id < LABEL_BASE_INDEX) {
 					return "label";
 				} else {
-					$icon = self::_get_icon_file($id);
-
-					if ($icon && file_exists($icon)) {
-						return Config::get(Config::ICONS_URL) . "/" . basename($icon) . "?" . filemtime($icon);
-					}
+					return self::_get_icon_url($id);
 				}
-				break;
 		}
-
-		return false;
 	}
 
 	/**
@@ -1749,11 +1759,11 @@ class Feeds extends Handler_Protected {
 			}
 
 			if (!$allow_archived) {
-				$from_qpart = "${ext_tables_part}ttrss_entries LEFT JOIN ttrss_user_entries ON (ref_id = ttrss_entries.id), ttrss_feeds";
+				$from_qpart = "{$ext_tables_part}ttrss_entries LEFT JOIN ttrss_user_entries ON (ref_id = ttrss_entries.id), ttrss_feeds";
 				$feed_check_qpart = "ttrss_user_entries.feed_id = ttrss_feeds.id AND";
 
 			} else {
-				$from_qpart = "${ext_tables_part}ttrss_entries LEFT JOIN ttrss_user_entries ON (ref_id = ttrss_entries.id)
+				$from_qpart = "{$ext_tables_part}ttrss_entries LEFT JOIN ttrss_user_entries ON (ref_id = ttrss_entries.id)
 						LEFT JOIN ttrss_feeds ON (feed_id = ttrss_feeds.id)";
 				$feed_check_qpart = "";
 			}
@@ -2238,7 +2248,7 @@ class Feeds extends Handler_Protected {
 	 * @return array{0: string, 1: array<int, string>} [$search_query_part, $search_words]
 	 */
 	private static function _search_to_sql(string $search, string $search_language, int $owner_uid): array {
-		$keywords = str_getcsv(preg_replace('/(-?\w+)\:"(\w+)/', '"${1}:${2}', trim($search)), ' ');
+		$keywords = str_getcsv(preg_replace('/(-?\w+)\:"(\w+)/', '"{$1}:{$2}', trim($search)), ' ');
 		$query_keywords = array();
 		$search_words = array();
 		$search_query_leftover = array();
