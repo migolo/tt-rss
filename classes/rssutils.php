@@ -37,7 +37,7 @@ class RSSUtils {
 		$pdo = Db::pdo();
 		$sth = $pdo->prepare("SELECT id FROM ttrss_feeds WHERE id = ?");
 
-		$cache = new DiskCache('feed-icons');
+		$cache = DiskCache::instance('feed-icons');
 
 		if ($cache->is_writable()) {
 			$dh = opendir($cache->get_full_path(""));
@@ -348,7 +348,7 @@ class RSSUtils {
 		$pdo = Db::pdo();
 
 		/** @var DiskCache $cache */
-		$cache = new DiskCache('feeds');
+		$cache = DiskCache::instance('feeds');
 
 		if (Config::get(Config::DB_TYPE) == "pgsql") {
 			$favicon_interval_qpart = "favicon_last_checked < NOW() - INTERVAL '12 hour'";
@@ -597,16 +597,19 @@ class RSSUtils {
 			Debug::log("site_url: {$feed_obj->site_url}", Debug::LOG_VERBOSE);
 			Debug::log("feed_title: {$rss->get_title()}", Debug::LOG_VERBOSE);
 
-			Debug::log("favicon: needs check: {$feed_obj->favicon_needs_check} is custom: {$feed_obj->favicon_is_custom} avg color: {$feed_obj->favicon_avg_color}",
+			Debug::log('favicon: needs check: ' . ($feed_obj->favicon_needs_check ? 'true' : 'false')
+				. ', is custom: ' . ($feed_obj->favicon_is_custom ? 'true' : 'false')
+				. ", avg color: {$feed_obj->favicon_avg_color}",
 				Debug::LOG_VERBOSE);
 
-			if ($feed_obj->favicon_needs_check || $force_refetch) {
+			if ($feed_obj->favicon_needs_check || $force_refetch
+				|| ($feed_obj->favicon_is_custom && !$feed_obj->favicon_avg_color)) {
 
 				// restrict update attempts to once per 12h
 				$feed_obj->favicon_last_checked = Db::NOW();
 				$feed_obj->save();
 
-				$favicon_cache = new DiskCache('feed-icons');
+				$favicon_cache = DiskCache::instance('feed-icons');
 
 				$favicon_modified = $favicon_cache->exists($feed) ? $favicon_cache->get_mtime($feed) : -1;
 
@@ -631,13 +634,16 @@ class RSSUtils {
 					$feed_obj->favicon_avg_color = 'fail';
 					$feed_obj->save();
 
-					$feed_obj->favicon_avg_color = \Colors\calculate_avg_color($favicon_cache->get_full_path($feed));
-					$feed_obj->save();
+					$calculated_avg_color = \Colors\calculate_avg_color($favicon_cache->get_full_path($feed));
+					if ($calculated_avg_color) {
+						$feed_obj->favicon_avg_color = $calculated_avg_color;
+						$feed_obj->save();
+					}
 
-					Debug::log("favicon: avg color: {$feed_obj->favicon_avg_color}", Debug::LOG_VERBOSE);
+					Debug::log("favicon: calculated avg color: {$calculated_avg_color}, setting avg color: {$feed_obj->favicon_avg_color}", Debug::LOG_VERBOSE);
 
 				} else if ($feed_obj->favicon_avg_color == 'fail') {
-					Debug::log("floicon failed on $feed, not trying to recalculate avg color", Debug::LOG_VERBOSE);
+					Debug::log("floicon failed on $feed or a suitable avg color couldn't be determined, not trying to recalculate avg color", Debug::LOG_VERBOSE);
 				}
 			}
 
@@ -1320,7 +1326,7 @@ class RSSUtils {
 	 * @see FeedEnclosure
 	 */
 	static function cache_enclosures(array $enclosures, string $site_url): void {
-		$cache = new DiskCache("images");
+		$cache = DiskCache::instance("images");
 
 		if ($cache->is_writable()) {
 			foreach ($enclosures as $enc) {
@@ -1372,7 +1378,7 @@ class RSSUtils {
 
 	/* TODO: move to DiskCache? */
 	static function cache_media(string $html, string $site_url): void {
-		$cache = new DiskCache("images");
+		$cache = DiskCache::instance("images");
 
 		if ($html && $cache->is_writable()) {
 			$doc = new DOMDocument();
@@ -1695,7 +1701,7 @@ class RSSUtils {
 
 		$dh = opendir($old_dir);
 
-		$cache = new DiskCache('feed-icons');
+		$cache = DiskCache::instance('feed-icons');
 
 		if ($dh) {
 			while (($old_filename = readdir($dh)) !== false) {
@@ -1714,7 +1720,7 @@ class RSSUtils {
 	}
 
 	static function housekeeping_common(): void {
-		$cache = new DiskCache("");
+		$cache = DiskCache::instance("");
 		$cache->expire_all();
 
 		self::migrate_feed_icons();
@@ -1789,7 +1795,7 @@ class RSSUtils {
 				break;
 			}
 
-			$favicon_cache = new DiskCache('feed-icons');
+			$favicon_cache = DiskCache::instance('feed-icons');
 
 			if ($favicon_cache->is_writable()) {
 				Debug::log("favicon: $favicon_url looks valid, saving to cache", Debug::LOG_VERBOSE);

@@ -431,12 +431,11 @@ class Feeds extends Handler_Protected {
 
 					$reply['content'] .= sprintf(__("Feeds last updated at %s"), $last_updated);
 
-					$sth = $this->pdo->prepare("SELECT COUNT(id) AS num_errors
-                        FROM ttrss_feeds WHERE last_error != '' AND owner_uid = ?");
-					$sth->execute([$_SESSION['uid']]);
-					$row = $sth->fetch();
-
-					$num_errors = $row["num_errors"];
+					$num_errors = ORM::for_table('ttrss_feeds')
+						->where_not_equal('last_error', '')
+						->where('owner_uid', $_SESSION['uid'])
+						->where_gte('update_interval', 0)
+						->count('id');
 
 					if ($num_errors > 0) {
 						$reply['content'] .= "<br/>";
@@ -585,12 +584,11 @@ class Feeds extends Handler_Protected {
 
 		$reply['headlines']['content'] .= sprintf(__("Feeds last updated at %s"), $last_updated);
 
-		$sth = $this->pdo->prepare("SELECT COUNT(id) AS num_errors
-			FROM ttrss_feeds WHERE last_error != '' AND owner_uid = ?");
-		$sth->execute([$_SESSION['uid']]);
-		$row = $sth->fetch();
-
-		$num_errors = $row["num_errors"];
+		$num_errors = ORM::for_table('ttrss_feeds')
+			->where_not_equal('last_error', '')
+			->where('owner_uid', $_SESSION['uid'])
+			->where_gte('update_interval', 0)
+			->count('id');
 
 		if ($num_errors > 0) {
 			$reply['headlines']['content'] .= "<br/>";
@@ -1163,7 +1161,7 @@ class Feeds extends Handler_Protected {
 	}
 
 	static function _get_icon_file(int $feed_id): string {
-		$favicon_cache = new DiskCache('feed-icons');
+		$favicon_cache = DiskCache::instance('feed-icons');
 
 		return $favicon_cache->get_full_path((string)$feed_id);
 	}
@@ -1182,7 +1180,7 @@ class Feeds extends Handler_Protected {
 	}
 
 	static function _has_icon(int $feed_id): bool {
-		$favicon_cache = new DiskCache('feed-icons');
+		$favicon_cache = DiskCache::instance('feed-icons');
 
 		return $favicon_cache->exists((string)$feed_id);
 	}
