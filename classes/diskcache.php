@@ -221,7 +221,11 @@ class DiskCache implements Cache_Adapter {
 	}
 
 	public function remove(string $filename): bool {
-		return $this->adapter->remove($filename);
+		$scope = Tracer::start(__METHOD__, ['filename' => $filename]);
+		$rc = $this->adapter->remove($filename);
+		$scope->close();
+
+		return $rc;
 	}
 
 	public function set_dir(string $dir) : void {
@@ -239,19 +243,28 @@ class DiskCache implements Cache_Adapter {
 		return $this->adapter->make_dir();
 	}
 
+	/** @param string|null $filename null means check that cache directory itself is writable */
 	public function is_writable(?string $filename = null): bool {
-		return $this->adapter->is_writable(basename($filename));
+		return $this->adapter->is_writable($filename ? basename($filename) : null);
 	}
 
 	public function exists(string $filename): bool {
-		return $this->adapter->exists(basename($filename));
+		$scope = Tracer::start(__METHOD__, ['filename' => $filename]);
+		$rc = $this->adapter->exists(basename($filename));
+		$scope->close();
+
+		return $rc;
 	}
 
 	/**
 	 * @return int|false -1 if the file doesn't exist, false if an error occurred, size in bytes otherwise
 	 */
 	public function get_size(string $filename) {
-		return $this->adapter->get_size(basename($filename));
+		$scope = Tracer::start(__METHOD__, ['filename' => $filename]);
+		$rc = $this->adapter->get_size(basename($filename));
+		$scope->close();
+
+		return $rc;
 	}
 
 	/**
@@ -260,7 +273,11 @@ class DiskCache implements Cache_Adapter {
 	 * @return int|false Bytes written or false if an error occurred.
 	 */
 	public function put(string $filename, $data) {
-		return $this->adapter->put(basename($filename), $data);
+		$scope = Tracer::start(__METHOD__);
+		$rc = $this->adapter->put(basename($filename), $data);
+		$scope->close();
+
+		return $rc;
 	}
 
 	/** @deprecated we can't assume cached files are local, and other storages
@@ -304,11 +321,16 @@ class DiskCache implements Cache_Adapter {
 	}
 
 	public function send(string $filename) {
+		$scope = Tracer::start(__METHOD__, ['filename' => $filename]);
+
 		$filename = basename($filename);
 
 		if (!$this->exists($filename)) {
 			header($_SERVER["SERVER_PROTOCOL"]." 404 Not Found");
 			echo "File not found.";
+
+			$scope->getSpan()->setTag('error', '404 not found');
+			$scope->close();
 			return false;
 		}
 
@@ -317,6 +339,9 @@ class DiskCache implements Cache_Adapter {
 
 		if (($_SERVER['HTTP_IF_MODIFIED_SINCE'] ?? '') == $gmt_modified || ($_SERVER['HTTP_IF_NONE_MATCH'] ?? '') == $file_mtime) {
 			header('HTTP/1.1 304 Not Modified');
+
+			$scope->getSpan()->setTag('error', '304 not modified');
+			$scope->close();
 			return false;
 		}
 
@@ -334,6 +359,9 @@ class DiskCache implements Cache_Adapter {
 			header("Content-type: text/plain");
 
 			print "Stored file has disallowed content type ($mimetype)";
+
+			$scope->getSpan()->setTag('error', '400 disallowed content type');
+			$scope->close();
 			return false;
 		}
 
@@ -355,7 +383,13 @@ class DiskCache implements Cache_Adapter {
 
 		header_remove("Pragma");
 
-		return $this->adapter->send($filename);
+		$scope->getSpan()->setTag('mimetype', $mimetype);
+
+		$rc = $this->adapter->send($filename);
+
+		$scope->close();
+
+		return $rc;
 	}
 
 	public function get_full_path(string $filename): string {
@@ -384,8 +418,14 @@ class DiskCache implements Cache_Adapter {
 	// plugins work on original source URLs used before caching
 	// NOTE: URLs should be already absolutized because this is called after sanitize()
 	static public function rewrite_urls(string $str): string {
+		$scope = Tracer::start(__METHOD__);
+
 		$res = trim($str);
-		if (!$res) return '';
+
+		if (!$res) {
+			$scope->close();
+			return '';
+		}
 
 		$doc = new DOMDocument();
 		if (@$doc->loadHTML('<?xml encoding="UTF-8">' . $res)) {
@@ -397,6 +437,8 @@ class DiskCache implements Cache_Adapter {
 			$need_saving = false;
 
 			foreach ($entries as $entry) {
+				$e_scope = Tracer::start('entry', ['tagName' => $entry->tagName]);
+
 				foreach (array('src', 'poster') as $attr) {
 					if ($entry->hasAttribute($attr)) {
 						$url = $entry->getAttribute($attr);
@@ -428,6 +470,8 @@ class DiskCache implements Cache_Adapter {
 
 					$entry->setAttribute("srcset", RSSUtils::encode_srcset($matches));
 				}
+
+				$e_scope->close();
 			}
 
 			if ($need_saving) {
@@ -437,6 +481,9 @@ class DiskCache implements Cache_Adapter {
 				$res = $doc->saveHTML();
 			}
 		}
+
+		$scope->close();
+
 		return $res;
 	}
 }

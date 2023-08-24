@@ -60,8 +60,8 @@ class Counters {
 
 		/* Labels category */
 
-		$cv = array("id" => -2, "kind" => "cat",
-			"counter" => Feeds::_get_cat_unread(-2));
+		$cv = array("id" => Feeds::CATEGORY_LABELS, "kind" => "cat",
+			"counter" => Feeds::_get_cat_unread(Feeds::CATEGORY_LABELS));
 
 		array_push($ret, $cv);
 
@@ -145,6 +145,7 @@ class Counters {
 	 * @return array<int, array<string, int|string>>
 	 */
 	private static function get_feeds(array $feed_ids = null): array {
+		$scope = Tracer::start(__METHOD__);
 
 		$ret = [];
 
@@ -211,6 +212,8 @@ class Counters {
 
 		}
 
+		$scope->close();
+
 		return $ret;
 	}
 
@@ -218,6 +221,8 @@ class Counters {
 	 * @return array<int, array<string, int|string>>
 	 */
 	private static function get_global(): array {
+		$scope = Tracer::start(__METHOD__);
+
 		$ret = [
 			[
 				"id" => "global-unread",
@@ -234,6 +239,8 @@ class Counters {
 			"counter" => $subcribed_feeds
 		]);
 
+		$scope->close();
+
 		return $ret;
 	}
 
@@ -241,31 +248,33 @@ class Counters {
 	 * @return array<int, array<string, int|string>>
 	 */
 	private static function get_virt(): array {
+		$scope = Tracer::start(__METHOD__);
 
 		$ret = [];
 
-		for ($i = 0; $i >= -4; $i--) {
+		foreach ([Feeds::FEED_ARCHIVED, Feeds::FEED_STARRED, Feeds::FEED_PUBLISHED,
+			Feeds::FEED_FRESH, Feeds::FEED_ALL] as $feed_id) {
 
-			$count = Feeds::_get_counters($i, false, true);
+			$count = Feeds::_get_counters($feed_id, false, true);
 
-			if ($i == 0 || $i == -1 || $i == -2)
-				$auxctr = Feeds::_get_counters($i, false);
+			if (in_array($feed_id, [Feeds::FEED_ARCHIVED, Feeds::FEED_STARRED, Feeds::FEED_PUBLISHED]))
+				$auxctr = Feeds::_get_counters($feed_id, false);
 			else
 				$auxctr = 0;
 
 			$cv = [
-				"id" => $i,
+				"id" => $feed_id,
 				"counter" => (int) $count,
 				"auxcounter" => (int) $auxctr
 			];
 
-			if ($i == -1)
+			if ($feed_id == Feeds::FEED_STARRED)
 				$cv["markedcounter"] = $auxctr;
 
 			array_push($ret, $cv);
 		}
 
-		$feeds = PluginHost::getInstance()->get_feeds(-1);
+		$feeds = PluginHost::getInstance()->get_feeds(Feeds::CATEGORY_SPECIAL);
 
 		if (is_array($feeds)) {
 			foreach ($feeds as $feed) {
@@ -286,6 +295,7 @@ class Counters {
 			}
 		}
 
+		$scope->close();
 		return $ret;
 	}
 
@@ -294,6 +304,7 @@ class Counters {
 	 * @return array<int, array<string, int|string>>
 	 */
 	static function get_labels(array $label_ids = null): array {
+		$scope = Tracer::start(__METHOD__);
 
 		$ret = [];
 
@@ -345,6 +356,7 @@ class Counters {
 			array_push($ret, $cv);
 		}
 
+		$scope->close();
 		return $ret;
 	}
 }

@@ -6,7 +6,7 @@
     'aliases' => 
     array (
     ),
-    'reference' => '26c67dba776e1e6f8ac40eed70fe79995325863d',
+    'reference' => 'a37eab2610a0a2bcb655258781c1c7e925dc94c0',
     'name' => '__root__',
   ),
   'versions' => 
@@ -18,7 +18,7 @@
       'aliases' => 
       array (
       ),
-      'reference' => '26c67dba776e1e6f8ac40eed70fe79995325863d',
+      'reference' => 'a37eab2610a0a2bcb655258781c1c7e925dc94c0',
     ),
     'beberlei/assert' => 
     array (
@@ -66,6 +66,15 @@
       ),
       'reference' => 'efc8ea06698f53e2c479c7696f2b154c47c3a3cb',
     ),
+    'jonahgeorge/jaeger-client-php' => 
+    array (
+      'pretty_version' => 'v1.4.4',
+      'version' => '1.4.4.0',
+      'aliases' => 
+      array (
+      ),
+      'reference' => '3173d9c68ad8cea16058f25337982b00cc3d1c2b',
+    ),
     'mervick/material-design-icons' => 
     array (
       'pretty_version' => '2.2.0',
@@ -92,6 +101,24 @@
       array (
       ),
       'reference' => '34bea19b6e03d8153165d8f30bba4c3be86184c1',
+    ),
+    'opentracing/opentracing' => 
+    array (
+      'pretty_version' => '1.0.2',
+      'version' => '1.0.2.0',
+      'aliases' => 
+      array (
+      ),
+      'reference' => 'cd60bd1fb2a25280600bc74c7f9e0c13881a9116',
+    ),
+    'packaged/thrift' => 
+    array (
+      'pretty_version' => '0.13.01',
+      'version' => '0.13.01.0',
+      'aliases' => 
+      array (
+      ),
+      'reference' => 'e3dbcfb79e319971d64264ffe9c340590cc8a228',
     ),
     'paragonie/constant_time_encoding' => 
     array (
@@ -158,12 +185,12 @@
     ),
     'phpstan/phpstan' => 
     array (
-      'pretty_version' => '1.8.2',
-      'version' => '1.8.2.0',
+      'pretty_version' => '1.10.3',
+      'version' => '1.10.3.0',
       'aliases' => 
       array (
       ),
-      'reference' => 'c53312ecc575caf07b0e90dee43883fdf90ca67c',
+      'reference' => '5419375b5891add97dc74be71e6c1c34baaddf64',
     ),
     'phpunit/php-code-coverage' => 
     array (
@@ -218,6 +245,24 @@
       array (
       ),
       'reference' => '5ff8c545a50226c569310a35f4fa89d79f1ddfdc',
+    ),
+    'psr/cache' => 
+    array (
+      'pretty_version' => '3.0.0',
+      'version' => '3.0.0.0',
+      'aliases' => 
+      array (
+      ),
+      'reference' => 'aa5030cfa5405eccfdcb1083ce040c2cb8d253bf',
+    ),
+    'psr/log' => 
+    array (
+      'pretty_version' => '3.0.0',
+      'version' => '3.0.0.0',
+      'aliases' => 
+      array (
+      ),
+      'reference' => 'fe5ea303b0887d5caefd3d431c3e61ad47037001',
     ),
     'sebastian/cli-parser' => 
     array (

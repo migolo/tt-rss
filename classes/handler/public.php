@@ -20,9 +20,9 @@ class Handler_Public extends Handler {
 		if (!$override_order) {
 			$override_order = "date_entered DESC, updated DESC";
 
-			if ($feed == -2 && !$is_cat) {
+			if ($feed == Feeds::FEED_PUBLISHED && !$is_cat) {
 				$override_order = "last_published DESC";
-			} else if ($feed == -1 && !$is_cat) {
+			} else if ($feed == Feeds::FEED_STARRED && !$is_cat) {
 				$override_order = "last_marked DESC";
 			}
 		}
@@ -260,7 +260,7 @@ class Handler_Public extends Handler {
 
 	function getUnread(): void {
 		$login = clean($_REQUEST["login"]);
-		$fresh = clean($_REQUEST["fresh"]) == "1";
+		$fresh = clean($_REQUEST["fresh"] ?? "0") == "1";
 
 		$uid = UserHelper::find_user_by_login($login);
 
@@ -269,7 +269,7 @@ class Handler_Public extends Handler {
 
 			if ($fresh) {
 				print ";";
-				print Feeds::_get_counters(-3, false, true, $uid);
+				print Feeds::_get_counters(Feeds::FEED_FRESH, false, true, $uid);
 			}
 		} else {
 			print "-1;User not found";
@@ -416,10 +416,10 @@ class Handler_Public extends Handler {
 				$_SESSION["login_error_msg"] ??= __("Incorrect username or password");
 			}
 
-			$return = clean($_REQUEST['return']);
+			$return = clean($_REQUEST['return'] ?? '');
 
-			if ($_REQUEST['return'] && mb_strpos($return, Config::get_self_url()) === 0) {
-				header("Location: " . clean($_REQUEST['return']));
+			if ($return && mb_strpos($return, Config::get_self_url()) === 0) {
+				header("Location: $return");
 			} else {
 				header("Location: " . Config::get_self_url());
 			}
@@ -451,6 +451,7 @@ class Handler_Public extends Handler {
 				echo javascript_tag("lib/dojo/dojo.js");
 				echo javascript_tag("lib/dojo/tt-rss-layer.js");
 			?>
+			<?= Config::get_override_links() ?>
 		</head>
 		<body class='flat ttrss_utility'>
 		<div class='container'>

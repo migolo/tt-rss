@@ -1,5 +1,6 @@
 <?php
 class RSSUtils {
+
 	/**
 	 * @param array<string, mixed> $article
 	 */
@@ -68,6 +69,8 @@ class RSSUtils {
 	 * @param array<string, false|string> $options
 	 */
 	static function update_daemon_common(int $limit = 0, array $options = []): int {
+		$scope = Tracer::start(__METHOD__);
+
 		if (!$limit) $limit = Config::get(Config::DAEMON_FEED_LIMIT);
 
 		if (Config::get_schema_version() != Config::SCHEMA_VERSION) {
@@ -283,6 +286,8 @@ class RSSUtils {
 		// Send feed digests by email if needed.
 		Digest::send_headlines_digests();
 
+		$scope->close();
+
 		return $nf;
 	}
 
@@ -316,14 +321,20 @@ class RSSUtils {
 
 				$feed_data = trim($feed_data);
 
-				$rss = new FeedParser($feed_data);
-				$rss->init();
+				if ($feed_data) {
+					$rss = new FeedParser($feed_data);
+					$rss->init();
 
-				if (!$rss->error()) {
-					$basic_info = [
-						'title' => mb_substr(clean($rss->get_title()), 0, 199),
-						'site_url' => mb_substr(UrlHelper::rewrite_relative($feed->feed_url, clean($rss->get_link())), 0, 245),
-					];
+					if (!$rss->error()) {
+						$basic_info = [
+							'title' => mb_substr(clean($rss->get_title()), 0, 199),
+							'site_url' => mb_substr(UrlHelper::rewrite_relative($feed->feed_url, clean($rss->get_link())), 0, 245),
+						];
+					} else {
+						Debug::log(sprintf("unable to parse feed for basic info: %s", $rss->error()), Debug::LOG_VERBOSE);
+					}
+				} else {
+					Debug::log(sprintf("unable to fetch feed for basic info: %s [%s]", UrlHelper::$fetch_last_error, UrlHelper::$fetch_last_error_code), Debug::LOG_VERBOSE);
 				}
 			}
 
@@ -341,8 +352,10 @@ class RSSUtils {
 		}
 	}
 
-	static function update_rss_feed(int $feed, bool $no_cache = false) : bool {
+	static function update_rss_feed(int $feed, bool $no_cache = false, bool $html_output = false) : bool {
 
+		$scope = Tracer::start(__METHOD__, [], func_get_args());
+		Debug::enable_html($html_output);
 		Debug::log("start", Debug::LOG_VERBOSE);
 
 		$pdo = Db::pdo();
@@ -377,16 +390,19 @@ class RSSUtils {
 			if ($user) {
 				if ($user->access_level == UserHelper::ACCESS_LEVEL_READONLY) {
 					Debug::log("error: denied update for $feed: permission denied by owner access level");
+					$scope->close();
 					return false;
 				}
 			} else {
 				// this would indicate database corruption of some kind
 				Debug::log("error: owner not found for feed: $feed");
+				$scope->close();
 				return false;
 			}
 
 		} else {
 			Debug::log("error: feeds table record not found for feed: $feed");
+			$scope->close();
 			return false;
 		}
 
@@ -410,6 +426,7 @@ class RSSUtils {
 		$rss_hash = false;
 
 		$force_refetch = isset($_REQUEST["force_refetch"]);
+		$dump_feed_xml = isset($_REQUEST["dump_feed_xml"]);
 		$feed_data = "";
 
 		Debug::log("running HOOK_FETCH_FEED handlers...", Debug::LOG_VERBOSE);
@@ -544,6 +561,7 @@ class RSSUtils {
 				$feed_obj->save();
 			}
 
+			$scope->close();
 			return $error_message == "";
 		}
 
@@ -553,6 +571,14 @@ class RSSUtils {
 		// because chain_hooks_callback() accepts variables by value
 		$pff_owner_uid = $feed_obj->owner_uid;
 		$pff_feed_url = $feed_obj->feed_url;
+
+		if ($dump_feed_xml) {
+			Debug::log("feed data before hooks:", Debug::LOG_VERBOSE);
+
+			Debug::log(Debug::SEPARATOR, Debug::LOG_VERBOSE);
+			print("<code class='feed-xml'>" . htmlspecialchars($feed_data). "</code>\n");
+			Debug::log(Debug::SEPARATOR, Debug::LOG_VERBOSE);
+		}
 
 		$start_ts = microtime(true);
 		$pluginhost->chain_hooks_callback(PluginHost::HOOK_FEED_FETCHED,
@@ -566,6 +592,14 @@ class RSSUtils {
 			Debug::log("feed data has been modified by a plugin.", Debug::LOG_VERBOSE);
 		} else {
 			Debug::log("feed data has not been modified by a plugin.", Debug::LOG_VERBOSE);
+		}
+
+		if ($dump_feed_xml) {
+			Debug::log("feed data after hooks:", Debug::LOG_VERBOSE);
+
+			Debug::log(Debug::SEPARATOR, Debug::LOG_VERBOSE);
+			print("<code class='feed-xml'>" . htmlspecialchars($feed_data). "</code>\n");
+			Debug::log(Debug::SEPARATOR, Debug::LOG_VERBOSE);
 		}
 
 		$rss = new FeedParser($feed_data);
@@ -669,7 +703,7 @@ class RSSUtils {
 				]);
 
 				$feed_obj->save();
-
+				$scope->close();
 				return true; // no articles
 			}
 
@@ -678,10 +712,11 @@ class RSSUtils {
 			$tstart = time();
 
 			foreach ($items as $item) {
+				$a_scope = Tracer::start('article');
+
 				$pdo->beginTransaction();
 
-				Debug::log("=================================================================================================================================",
-					Debug::LOG_VERBOSE);
+				Debug::log(Debug::SEPARATOR, Debug::LOG_VERBOSE);
 
 				if (Debug::get_loglevel() >= 3) {
 					print_r($item);
@@ -1270,10 +1305,10 @@ class RSSUtils {
 				Debug::log("article processed.", Debug::LOG_VERBOSE);
 
 				$pdo->commit();
+				$a_scope->close();
 			}
 
-			Debug::log("=================================================================================================================================",
-					Debug::LOG_VERBOSE);
+			Debug::log(Debug::SEPARATOR, Debug::LOG_VERBOSE);
 
 			Debug::log("purging feed...", Debug::LOG_VERBOSE);
 
@@ -1311,10 +1346,12 @@ class RSSUtils {
 			unset($rss);
 
 			Debug::log("update failed.", Debug::LOG_VERBOSE);
+			$scope->close();
 			return false;
 		}
 
 		Debug::log("update done.", Debug::LOG_VERBOSE);
+		$scope->close();
 		return true;
 	}
 
@@ -1479,6 +1516,8 @@ class RSSUtils {
 	 * @return array<int, array<string, string>> An array of filter action arrays with keys "type" and "param"
 	 */
 	static function get_article_filters(array $filters, string $title, string $content, string $link, string $author, array $tags, array &$matched_rules = null, array &$matched_filters = null): array {
+		$scope = Tracer::start(__METHOD__);
+
 		$matches = array();
 
 		foreach ($filters as $filter) {
@@ -1520,6 +1559,9 @@ class RSSUtils {
 						$match = @preg_match("/$reg_exp/iu", $author);
 						break;
 					case "tag":
+						if (count($tags) == 0)
+							array_push($tags, ''); // allow matching if there are no tags
+
 						foreach ($tags as $tag) {
 							if (@preg_match("/$reg_exp/iu", $tag)) {
 								$match = true;
@@ -1558,6 +1600,8 @@ class RSSUtils {
 				}
 			}
 		}
+
+		$scope->close();
 
 		return $matches;
 	}

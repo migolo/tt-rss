@@ -1,0 +1,60 @@
+stages:
+  - lint
+  - build
+
+variables:
+  ESLINT_PATHS: js plugins
+
+include:
+  - project: 'ci/ci-templates'
+    ref: master
+    file: .ci-build-docker.yml
+  - project: 'ci/ci-templates'
+    ref: master
+    file: .ci-lint-common.yml
+
+phpunit:
+  extends: .phpunit
+
+eslint:
+  extends: .eslint
+
+phpstan:
+  extends: .phpstan
+
+ttrss-web-nginx:
+  extends: .build-master
+  variables:
+    BUILD_CONTEXT: ${CI_PROJECT_DIR}/.docker/web-nginx
+
+ttrss-web-nginx:branch:
+  extends: .build-branch
+  variables:
+    BUILD_CONTEXT: ${CI_PROJECT_DIR}/.docker/web-nginx
+
+ttrss-fpm-pgsql-static:
+   extends: .build-master
+   variables:
+    BUILD_CONTEXT: ${CI_PROJECT_DIR}/.docker/app
+
+ttrss-fpm-pgsql-static:branch:
+   extends: .build-branch
+   variables:
+    BUILD_CONTEXT: ${CI_PROJECT_DIR}/.docker/app
+
+phpdoc:
+  image:
+    name: ${CI_DOCKER_IMAGE}
+  stage: build
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE != "web" && $PHPDOC_DEPLOY_SSH_KEY != null
+      changes:
+        - '**/*.php'
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $PHPDOC_DEPLOY_SSH_KEY != null
+      when: manual
+  script:
+    - php81 /phpDocumentor.phar -d classes -d include -t phpdoc --visibility=public
+    - mkdir -p ~/.ssh &&
+        cp ${PHPDOC_DEPLOY_SSH_KEY} ~/.ssh/id_ed25519 &&
+        chmod 0600 ~/.ssh/id_ed25519
+    - rsync -av -e 'ssh -o StrictHostKeyChecking=no' phpdoc/ ${PHPDOC_DEPLOY_HOST}:phpdoc/

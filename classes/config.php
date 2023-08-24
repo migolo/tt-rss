@@ -192,6 +192,12 @@ class Config {
 	/** delay updates for this feed if received HTTP 429 (Too Many Requests) for this amount of seconds (base value, actual delay is base...base*2) */
 	const HTTP_429_THROTTLE_INTERVAL = "HTTP_429_THROTTLE_INTERVAL";
 
+	/** host running Jaeger collector to receive traces (disabled if empty) */
+	const JAEGER_REPORTING_HOST = "JAEGER_REPORTING_HOST";
+
+	/** Jaeger service name */
+	const JAEGER_SERVICE_NAME = "JAEGER_SERVICE_NAME";
+
 	/** default values for all global configuration options */
 	private const _DEFAULTS = [
 		Config::DB_TYPE => [ "pgsql", 									Config::T_STRING ],
@@ -249,6 +255,8 @@ class Config {
 		Config::HTTP_USER_AGENT => [ 'Tiny Tiny RSS/%s (https://tt-rss.org/)',
 																					Config::T_STRING ],
 		Config::HTTP_429_THROTTLE_INTERVAL => [ 3600,				Config::T_INT ],
+		Config::JAEGER_REPORTING_HOST => [ "",							Config::T_STRING ],
+		Config::JAEGER_SERVICE_NAME => [ "tt-rss",					Config::T_STRING ],
 	];
 
 	/** @var Config|null */
@@ -303,7 +311,11 @@ class Config {
 	static function get_version_html() : string {
 		$version = self::get_version(false);
 
-		return sprintf("<span title=\"%s\">%s</span>", date("Y-m-d H:i:s", ($version['timestamp'] ?? 0)), $version['version']);
+		return sprintf("<span title=\"%s\n%s\n%s\">%s</span>",
+			date("Y-m-d H:i:s", ($version['timestamp'] ?? 0)),
+				$version['commit'] ?? '',
+				$version['branch'] ?? '',
+				$version['version']);
 	}
 
 	/**
@@ -315,8 +327,16 @@ class Config {
 		if (empty($this->version)) {
 			$this->version["status"] = -1;
 
-			if (PHP_OS === "Darwin") {
-				$ttrss_version["version"] = "UNKNOWN (Unsupported, Darwin)";
+			if (getenv("CI_COMMIT_SHORT_SHA") && getenv("CI_COMMIT_TIMESTAMP")) {
+
+				$this->version["branch"] = getenv("CI_COMMIT_BRANCH");
+				$this->version["timestamp"] = strtotime(getenv("CI_COMMIT_TIMESTAMP"));
+				$this->version["version"] = sprintf("%s-%s", date("y.m", $this->version["timestamp"]), getenv("CI_COMMIT_SHORT_SHA"));
+				$this->version["commit"] = getenv("CI_COMMIT_SHORT_SHA");
+				$this->version["status"] = 0;
+
+			} else if (PHP_OS === "Darwin") {
+				$this->version["version"] = "UNKNOWN (Unsupported, Darwin)";
 			} else if (file_exists("$root_dir/version_static.txt")) {
 				$this->version["version"] = trim(file_get_contents("$root_dir/version_static.txt")) . " (Unsupported)";
 			} else if (ini_get("open_basedir")) {
@@ -352,6 +372,7 @@ class Config {
 		$rv = [
 			"status" => -1,
 			"version" => "",
+			"branch" => "",
 			"commit" => "",
 			"timestamp" => 0,
 		];
@@ -539,6 +560,10 @@ class Config {
 
 			if (!function_exists("json_encode")) {
 				array_push($errors, "PHP support for JSON is required, but was not found.");
+			}
+
+			if (!function_exists("flock")) {
+				array_push($errors, "PHP support for flock() function is required.");
 			}
 
 			if (!class_exists("PDO")) {
