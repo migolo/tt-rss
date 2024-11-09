@@ -357,27 +357,27 @@
 		return $s && ($s !== "f" && $s !== "false"); //no-op for PDO, backwards compat for legacy layer
 	}
 
+	/** workaround for PDO casting all query parameters to string unless type is specified explicitly,
+	 * which breaks booleans having false value because they become empty string literals ("") causing
+	 * DB type mismatches and breaking SQL queries */
 	function bool_to_sql_bool(bool $s): int {
-		return $s ? 1 : 0;
+		return (int)$s;
 	}
 
 	function file_is_locked(string $filename): bool {
 		if (file_exists(Config::get(Config::LOCK_DIRECTORY) . "/$filename")) {
-			if (function_exists('flock')) {
-				$fp = @fopen(Config::get(Config::LOCK_DIRECTORY) . "/$filename", "r");
-				if ($fp) {
-					if (flock($fp, LOCK_EX | LOCK_NB)) {
-						flock($fp, LOCK_UN);
-						fclose($fp);
-						return false;
-					}
+			$fp = @fopen(Config::get(Config::LOCK_DIRECTORY) . "/$filename", "r");
+			if ($fp) {
+				if (flock($fp, LOCK_EX | LOCK_NB)) {
+					flock($fp, LOCK_UN);
 					fclose($fp);
-					return true;
-				} else {
 					return false;
 				}
+				fclose($fp);
+				return true;
+			} else {
+				return false;
 			}
-			return true; // consider the file always locked and skip the test
 		} else {
 			return false;
 		}
@@ -410,11 +410,13 @@
 		}
 	}
 
-	/**
+	/** checkbox-specific workaround for PDO casting all query parameters to string unless type is
+	 * specified explicitly, which breaks booleans having false value because they become empty
+	 * string literals ("") causing DB type mismatches and breaking SQL queries
 	 * @param mixed $val
 	 */
 	function checkbox_to_sql_bool($val): int {
-		return ($val == "on") ? 1 : 0;
+		return ($val === "on") ? 1 : 0;
 	}
 
 	function uniqid_short(): string {

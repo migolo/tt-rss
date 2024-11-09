@@ -21,8 +21,8 @@ class Cache_Starred_Images extends Plugin {
 
 	function init($host) {
 		$this->host = $host;
-		$this->cache = new DiskCache("starred-images");
-		$this->cache_status = new DiskCache("starred-images.status-files");
+		$this->cache = DiskCache::instance("starred-images");
+		$this->cache_status = DiskCache::instance("starred-images.status-files");
 
 		if ($this->cache->make_dir())
 			chmod($this->cache->get_dir(), 0777);
@@ -31,10 +31,10 @@ class Cache_Starred_Images extends Plugin {
 			chmod($this->cache_status->get_dir(), 0777);
 
 		if (!$this->cache->exists(".no-auto-expiry"))
-			$this->cache->touch(".no-auto-expiry");
+			$this->cache->put(".no-auto-expiry", "");
 
 		if (!$this->cache_status->exists(".no-auto-expiry"))
-			$this->cache_status->touch(".no-auto-expiry");
+			$this->cache_status->put(".no-auto-expiry", "");
 
 		if ($this->cache->is_writable() && $this->cache_status->is_writable()) {
 			$host->add_hook($host::HOOK_HOUSE_KEEPING, $this);

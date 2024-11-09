@@ -36,7 +36,7 @@ class Auth_Internal extends Auth_Base {
 						return false;
 
 				} else {
-					$return = urlencode($_REQUEST["return"]);
+					$return = urlencode(with_trailing_slash($_REQUEST["return"]));
 					?>
 					<!DOCTYPE html>
 					<html>
@@ -76,11 +76,12 @@ class Auth_Internal extends Auth_Base {
 										},
 									};
 								</script>
+								<?= Config::get_override_links() ?>
 							</head>
 							<body class="flat ttrss_utility otp css_loading">
 								<h1><?= __("Authentication") ?></h1>
 								<div class="content">
-									<form dojoType="dijit.form.Form" action="public.php?return=<?= urlencode(with_trailing_slash($return)) ?>" method="post" class="otpform">
+									<form dojoType="dijit.form.Form" action="public.php?return=<?= $return ?>" method="post" class="otpform">
 
 										<?php foreach (["login", "password", "bw_limit", "safe_mode", "remember_me", "profile"] as $key) {
 											print \Controls\hidden_tag($key, $_POST[$key] ?? "");
@@ -224,7 +225,7 @@ class Auth_Internal extends Auth_Base {
 				$tpl->readTemplateFromFile("password_change_template.txt");
 
 				$tpl->setVariable('LOGIN', $user->login);
-				$tpl->setVariable('TTRSS_HOST', Config::get(Config::SELF_URL_PATH));
+				$tpl->setVariable('TTRSS_HOST', Config::get_self_url());
 
 				$tpl->addBlock('message');
 

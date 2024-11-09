@@ -2,6 +2,7 @@
 class Digest
 {
 	static function send_headlines_digests(): void {
+		$scope = Tracer::start(__METHOD__);
 
 		$user_limit = 15; // amount of users to process (e.g. emails to send out)
 		$limit = 1000; // maximum amount of headlines to include
@@ -75,6 +76,8 @@ class Digest
 				}
 			}
 		}
+
+		$scope->close();
 		Debug::log("All done.");
 	}
 
@@ -98,11 +101,11 @@ class Digest
 
 		$tpl->setVariable('CUR_DATE', date('Y/m/d', $local_ts));
 		$tpl->setVariable('CUR_TIME', date('G:i', $local_ts));
-		$tpl->setVariable('TTRSS_HOST', Config::get(Config::SELF_URL_PATH));
+		$tpl->setVariable('TTRSS_HOST', Config::get_self_url());
 
 		$tpl_t->setVariable('CUR_DATE', date('Y/m/d', $local_ts));
 		$tpl_t->setVariable('CUR_TIME', date('G:i', $local_ts));
-		$tpl_t->setVariable('TTRSS_HOST', Config::get(Config::SELF_URL_PATH));
+		$tpl_t->setVariable('TTRSS_HOST', Config::get_self_url());
 
 		$affected_ids = array();
 

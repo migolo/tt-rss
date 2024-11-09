@@ -1,6 +1,10 @@
 <?php
-class DiskCache {
-	private string $dir;
+class DiskCache implements Cache_Adapter {
+	/** @var Cache_Adapter $adapter */
+	private $adapter;
+
+	/** @var array<string, DiskCache> $instances */
+	private static $instances = [];
 
 	/**
 	 * https://stackoverflow.com/a/53662733
@@ -194,48 +198,73 @@ class DiskCache {
 		'text/x-scriptzsh'                                                          => 'zsh'
 	];
 
-	public function __construct(string $dir) {
-		$this->dir = Config::get(Config::CACHE_DIR) . "/" . basename(clean($dir));
+	public static function instance(string $dir) : DiskCache {
+		if ((self::$instances[$dir] ?? null) == null)
+			self::$instances[$dir] = new self($dir);
+
+		return self::$instances[$dir];
 	}
 
-	public function get_dir(): string {
-		return $this->dir;
+	public function __construct(string $dir) {
+		foreach (PluginHost::getInstance()->get_plugins() as $n => $p) {
+			if (implements_interface($p, "Cache_Adapter")) {
+
+				/** @var Cache_Adapter $p */
+				$this->adapter = clone $p; // we need separate object instances for separate directories
+				$this->adapter->set_dir($dir);
+				return;
+			}
+		}
+
+		$this->adapter = new Cache_Local();
+		$this->adapter->set_dir($dir);
+	}
+
+	public function remove(string $filename): bool {
+		$scope = Tracer::start(__METHOD__, ['filename' => $filename]);
+		$rc = $this->adapter->remove($filename);
+		$scope->close();
+
+		return $rc;
+	}
+
+	public function set_dir(string $dir) : void {
+		$this->adapter->set_dir($dir);
+	}
+
+	/**
+	 * @return int|false -1 if the file doesn't exist, false if an error occurred, timestamp otherwise
+	 */
+	public function get_mtime(string $filename) {
+		return $this->adapter->get_mtime(basename($filename));
 	}
 
 	public function make_dir(): bool {
-		if (!is_dir($this->dir)) {
-			return mkdir($this->dir);
-		}
-		return false;
+		return $this->adapter->make_dir();
 	}
 
+	/** @param string|null $filename null means check that cache directory itself is writable */
 	public function is_writable(?string $filename = null): bool {
-		if ($filename) {
-			if (file_exists($this->get_full_path($filename)))
-				return is_writable($this->get_full_path($filename));
-			else
-				return is_writable($this->dir);
-		} else {
-			return is_writable($this->dir);
-		}
+		return $this->adapter->is_writable($filename ? basename($filename) : null);
 	}
 
 	public function exists(string $filename): bool {
-		return file_exists($this->get_full_path($filename));
+		$scope = Tracer::start(__METHOD__, ['filename' => $filename]);
+		$rc = $this->adapter->exists(basename($filename));
+		$scope->close();
+
+		return $rc;
 	}
 
 	/**
 	 * @return int|false -1 if the file doesn't exist, false if an error occurred, size in bytes otherwise
 	 */
 	public function get_size(string $filename) {
-		if ($this->exists($filename))
-			return filesize($this->get_full_path($filename));
-		else
-			return -1;
-	}
+		$scope = Tracer::start(__METHOD__, ['filename' => $filename]);
+		$rc = $this->adapter->get_size(basename($filename));
+		$scope->close();
 
-	public function get_full_path(string $filename): string {
-		return $this->dir . "/" . basename(clean($filename));
+		return $rc;
 	}
 
 	/**
@@ -244,11 +273,31 @@ class DiskCache {
 	 * @return int|false Bytes written or false if an error occurred.
 	 */
 	public function put(string $filename, $data) {
-		return file_put_contents($this->get_full_path($filename), $data);
+		$scope = Tracer::start(__METHOD__);
+		$rc = $this->adapter->put(basename($filename), $data);
+		$scope->close();
+
+		return $rc;
 	}
 
+	/** @deprecated we can't assume cached files are local, and other storages
+	 * might not support this operation (object metadata may be immutable) */
 	public function touch(string $filename): bool {
-		return touch($this->get_full_path($filename));
+		user_error("DiskCache: called unsupported method touch() for $filename", E_USER_DEPRECATED);
+
+		return false;
+	}
+
+	public function get(string $filename): ?string {
+		return $this->adapter->get(basename($filename));
+	}
+
+	public function expire_all(): void {
+		$this->adapter->expire_all();
+	}
+
+	public function get_dir(): string {
+		return $this->adapter->get_dir();
 	}
 
 	/** Downloads $url to cache as $local_filename if its missing (unless $force-ed)
@@ -271,25 +320,88 @@ class DiskCache {
 		return false;
 	}
 
-	public function get(string $filename): ?string {
-		if ($this->exists($filename))
-			return file_get_contents($this->get_full_path($filename));
-		else
-			return null;
+	public function send(string $filename) {
+		$scope = Tracer::start(__METHOD__, ['filename' => $filename]);
+
+		$filename = basename($filename);
+
+		if (!$this->exists($filename)) {
+			header($_SERVER["SERVER_PROTOCOL"]." 404 Not Found");
+			echo "File not found.";
+
+			$scope->getSpan()->setTag('error', '404 not found');
+			$scope->close();
+			return false;
+		}
+
+		$file_mtime = $this->get_mtime($filename);
+		$gmt_modified = gmdate("D, d M Y H:i:s", (int)$file_mtime) . " GMT";
+
+		if (($_SERVER['HTTP_IF_MODIFIED_SINCE'] ?? '') == $gmt_modified || ($_SERVER['HTTP_IF_NONE_MATCH'] ?? '') == $file_mtime) {
+			header('HTTP/1.1 304 Not Modified');
+
+			$scope->getSpan()->setTag('error', '304 not modified');
+			$scope->close();
+			return false;
+		}
+
+		$mimetype = $this->get_mime_type($filename);
+
+		if ($mimetype == "application/octet-stream")
+				$mimetype = "video/mp4";
+
+		# block SVG because of possible embedded javascript (.....)
+		$mimetype_blacklist = [ "image/svg+xml" ];
+
+		/* only serve video and images */
+		if (!preg_match("/(image|audio|video)\//", (string)$mimetype) || in_array($mimetype, $mimetype_blacklist)) {
+			http_response_code(400);
+			header("Content-type: text/plain");
+
+			print "Stored file has disallowed content type ($mimetype)";
+
+			$scope->getSpan()->setTag('error', '400 disallowed content type');
+			$scope->close();
+			return false;
+		}
+
+		$fake_extension = $this->get_fake_extension($filename);
+
+		if ($fake_extension)
+			$fake_extension = ".$fake_extension";
+
+		header("Content-Disposition: inline; filename=\"{$filename}{$fake_extension}\"");
+		header("Content-type: $mimetype");
+
+		$stamp_expires = gmdate("D, d M Y H:i:s",
+			(int)$this->get_mtime($filename) + 86400 * Config::get(Config::CACHE_MAX_DAYS)) . " GMT";
+
+		header("Expires: $stamp_expires", true);
+		header("Last-Modified: $gmt_modified", true);
+		header("Cache-Control: no-cache");
+		header("ETag: $file_mtime");
+
+		header_remove("Pragma");
+
+		$scope->getSpan()->setTag('mimetype', $mimetype);
+
+		$rc = $this->adapter->send($filename);
+
+		$scope->close();
+
+		return $rc;
 	}
 
-	/**
-	 * @return false|null|string false if detection failed, null if the file doesn't exist, string mime content type otherwise
-	 */
+	public function get_full_path(string $filename): string {
+		return $this->adapter->get_full_path(basename($filename));
+	}
+
 	public function get_mime_type(string $filename) {
-		if ($this->exists($filename))
-			return mime_content_type($this->get_full_path($filename));
-		else
-			return null;
+		return $this->adapter->get_mime_type(basename($filename));
 	}
 
 	public function get_fake_extension(string $filename): string {
-		$mimetype = $this->get_mime_type($filename);
+		$mimetype = $this->adapter->get_mime_type(basename($filename));
 
 		if ($mimetype)
 			return isset($this->mimeMap[$mimetype]) ? $this->mimeMap[$mimetype] : "";
@@ -297,22 +409,8 @@ class DiskCache {
 			return "";
 	}
 
-	/**
-	 * @return bool|int false if the file doesn't exist (or unreadable) or isn't audio/video, true if a plugin handled, otherwise int of bytes sent
-	 */
-	public function send(string $filename) {
-		$fake_extension = $this->get_fake_extension($filename);
-
-		if ($fake_extension)
-			$fake_extension = ".$fake_extension";
-
-		header("Content-Disposition: inline; filename=\"${filename}${fake_extension}\"");
-
-		return $this->send_local_file($this->get_full_path($filename));
-	}
-
 	public function get_url(string $filename): string {
-		return Config::get_self_url() . "/public.php?op=cached&file=" . basename($this->dir) . "/" . basename($filename);
+		return Config::get_self_url() . "/public.php?op=cached&file=" . basename($this->adapter->get_dir()) . "/" . basename($filename);
 	}
 
 	// check for locally cached (media) URLs and rewrite to local versions
@@ -320,19 +418,27 @@ class DiskCache {
 	// plugins work on original source URLs used before caching
 	// NOTE: URLs should be already absolutized because this is called after sanitize()
 	static public function rewrite_urls(string $str): string {
+		$scope = Tracer::start(__METHOD__);
+
 		$res = trim($str);
-		if (!$res) return '';
+
+		if (!$res) {
+			$scope->close();
+			return '';
+		}
 
 		$doc = new DOMDocument();
 		if (@$doc->loadHTML('<?xml encoding="UTF-8">' . $res)) {
 			$xpath = new DOMXPath($doc);
-			$cache = new DiskCache("images");
+			$cache = DiskCache::instance("images");
 
 			$entries = $xpath->query('(//img[@src]|//source[@src|@srcset]|//video[@poster|@src])');
 
 			$need_saving = false;
 
 			foreach ($entries as $entry) {
+				$e_scope = Tracer::start('entry', ['tagName' => $entry->tagName]);
+
 				foreach (array('src', 'poster') as $attr) {
 					if ($entry->hasAttribute($attr)) {
 						$url = $entry->getAttribute($attr);
@@ -364,6 +470,8 @@ class DiskCache {
 
 					$entry->setAttribute("srcset", RSSUtils::encode_srcset($matches));
 				}
+
+				$e_scope->close();
 			}
 
 			if ($need_saving) {
@@ -373,86 +481,9 @@ class DiskCache {
 				$res = $doc->saveHTML();
 			}
 		}
+
+		$scope->close();
+
 		return $res;
-	}
-
-	static function expire(): void {
-		$dirs = array_filter(glob(Config::get(Config::CACHE_DIR) . "/*"), "is_dir");
-
-		foreach ($dirs as $cache_dir) {
-			$num_deleted = 0;
-
-			if (is_writable($cache_dir) && !file_exists("$cache_dir/.no-auto-expiry")) {
-				$files = glob("$cache_dir/*");
-
-				if ($files) {
-					foreach ($files as $file) {
-						if (time() - filemtime($file) > 86400*Config::get(Config::CACHE_MAX_DAYS)) {
-							unlink($file);
-
-							++$num_deleted;
-						}
-					}
-				}
-
-				Debug::log("Expired $cache_dir: removed $num_deleted files.");
-			}
-		}
-	}
-
-	/*	 */
-	/**
-	 * this is essentially a wrapper for readfile() which allows plugins to hook
-	 * output with httpd-specific "fast" implementation i.e. X-Sendfile or whatever else
-	 *
-	 * hook function should return true if request was handled (or at least attempted to)
-	 *
-	 * note that this can be called without user context so the plugin to handle this
-	 * should be loaded systemwide in config.php
-	 *
-	 * @return bool|int false if the file doesn't exist (or unreadable) or isn't audio/video, true if a plugin handled, otherwise int of bytes sent
-	 */
-	function send_local_file(string $filename) {
-		if (file_exists($filename)) {
-
-			if (is_writable($filename)) touch($filename);
-
-			$mimetype = mime_content_type($filename);
-
-			// this is hardly ideal but 1) only media is cached in images/ and 2) seemingly only mp4
-			// video files are detected as octet-stream by mime_content_type()
-
-			if ($mimetype == "application/octet-stream")
-				$mimetype = "video/mp4";
-
-			# block SVG because of possible embedded javascript (.....)
-			$mimetype_blacklist = [ "image/svg+xml" ];
-
-			/* only serve video and images */
-			if (!preg_match("/(image|audio|video)\//", (string)$mimetype) || in_array($mimetype, $mimetype_blacklist)) {
-				http_response_code(400);
-				header("Content-type: text/plain");
-
-				print "Stored file has disallowed content type ($mimetype)";
-				return false;
-			}
-
-			$tmppluginhost = new PluginHost();
-
-			$tmppluginhost->load(Config::get(Config::PLUGINS), PluginHost::KIND_SYSTEM);
-			//$tmppluginhost->load_data();
-
-			if ($tmppluginhost->run_hooks_until(PluginHost::HOOK_SEND_LOCAL_FILE, true, $filename))
-				return true;
-
-			header("Content-type: $mimetype");
-
-			$stamp = gmdate("D, d M Y H:i:s", (int)filemtime($filename)) . " GMT";
-			header("Last-Modified: $stamp", true);
-
-			return readfile($filename);
-		} else {
-			return false;
-		}
 	}
 }

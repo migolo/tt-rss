@@ -97,4 +97,7 @@ return array(
     '4af1dca6db8c527c6eed27bff85ff0e5' => $vendorDir . '/thecodingmachine/safe/generated/yaz.php',
     'fe43ca06499ac37bc2dedd823af71eb5' => $vendorDir . '/thecodingmachine/safe/generated/zip.php',
     '356736db98a6834f0a886b8d509b0ecd' => $vendorDir . '/thecodingmachine/safe/generated/zlib.php',
+    'ff1b7935a93a4a9517db3ebe0533892a' => $vendorDir . '/opentracing/opentracing/src/OpenTracing/Tags.php',
+    '0db36546c71c357f5ee70c39bb03966f' => $vendorDir . '/opentracing/opentracing/src/OpenTracing/Formats.php',
+    '822502b10d2c1dae82956ef999e8b4be' => $vendorDir . '/jonahgeorge/jaeger-client-php/src/Jaeger/Constants.php',
 );

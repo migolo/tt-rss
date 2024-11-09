@@ -3,6 +3,19 @@
 /* global __, App, Headlines, xhr, dojo, dijit, fox, PluginHost, Notify, fox */
 
 const	Feeds = {
+	FEED_ARCHIVED: 0,
+	FEED_STARRED: -1,
+	FEED_PUBLISHED: -2,
+	FEED_FRESH: -3,
+	FEED_ALL: -4,
+	FEED_DASHBOARD: -5,
+	FEED_RECENTLY_READ: -6,
+	FEED_ERROR: -7,
+	CATEGORY_UNCATEGORIZED: 0,
+	CATEGORY_SPECIAL: -1,
+	CATEGORY_LABELS: -2,
+	CATEGORY_ALL_EXCEPT_VIRTUAL: -3,
+	CATEGORY_ALL: -4,
 	_default_feed_id: -3,
 	counters_last_request: 0,
 	_active_feed_id: undefined,
@@ -71,7 +84,7 @@ const	Feeds = {
 			const kind = elems[l].kind;
 			const ctr = parseInt(elems[l].counter);
 			const error = elems[l].error;
-			const has_img = elems[l].has_img;
+			const ts = elems[l].ts;
 			const updated = elems[l].updated;
 
 			if (id == "global-unread") {
@@ -98,9 +111,9 @@ const	Feeds = {
 				this.setValue(id, false, 'updated', updated);
 
 				if (id > 0) {
-					if (has_img) {
+					if (ts) {
 						this.setIcon(id, false,
-							App.getInitParam("icons_url") + "/" + id + ".ico?" + has_img);
+							App.getInitParam("icons_url") + '?' + dojo.objectToQuery({op: 'feed_icon', id: id, ts: ts}));
 					} else {
 						this.setIcon(id, false, 'images/blank_icon.gif');
 					}
@@ -678,8 +691,10 @@ const	Feeds = {
 		});
 	},
 	renderIcon: function(feed_id, exists) {
+		const icon_url = App.getInitParam("icons_url") + '?' + dojo.objectToQuery({op: 'feed_icon', id: feed_id});
+
 		return feed_id && exists ?
-			`<img class="icon" src="${App.escapeHtml(App.getInitParam("icons_url"))}/${feed_id}.ico">` :
+			`<img class="icon" src="${App.escapeHtml(icon_url)}">` :
 				`<i class='icon-no-feed material-icons'>rss_feed</i>`;
 	}
 };

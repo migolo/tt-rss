@@ -339,9 +339,12 @@ class PluginHost {
 	 */
 	function chain_hooks_callback(string $hook, Closure $callback, &...$args): void {
 		$method = strtolower((string)$hook);
+		$scope = Tracer::start(__METHOD__, ['hook' => $hook]);
 
 		foreach ($this->get_hooks((string)$hook) as $plugin) {
 			//Debug::log("invoking: " . get_class($plugin) . "->$hook()", Debug::$LOG_VERBOSE);
+
+			$p_scope = Tracer::start("$hook - " . get_class($plugin));
 
 			try {
 				if ($callback($plugin->$method(...$args), $plugin))
@@ -351,7 +354,11 @@ class PluginHost {
 			} catch (Error $err) {
 				user_error($err, E_USER_WARNING);
 			}
+
+			$p_scope->close();
 		}
+
+		$scope->close();
 	}
 
 	/**
@@ -431,6 +438,8 @@ class PluginHost {
 	 * @param PluginHost::KIND_* $kind
 	 */
 	function load(string $classlist, int $kind, int $owner_uid = null, bool $skip_init = false): void {
+		$scope = Tracer::start(__METHOD__);
+
 		$plugins = explode(",", $classlist);
 
 		$this->owner_uid = (int) $owner_uid;
@@ -439,22 +448,25 @@ class PluginHost {
 			$class = trim($class);
 			$class_file = strtolower(basename(clean($class)));
 
+			$p_scope = Tracer::start("loading $class_file");
+
 			// try system plugin directory first
 			$file = dirname(__DIR__) . "/plugins/$class_file/init.php";
 
 			if (!file_exists($file)) {
 				$file = dirname(__DIR__) . "/plugins.local/$class_file/init.php";
 
-				if (!file_exists($file))
+				if (!file_exists($file)) {
+					$p_scope->close();
 					continue;
+				}
 			}
 
 			if (!isset($this->plugins[$class])) {
-
 				// WIP hack
 				// we can't catch incompatible method signatures via Throwable
 				// this also enables global tt-rss safe mode in case there are more plugins like this
-				if (($_SESSION["plugin_blacklist"][$class] ?? 0)) {
+				if (!getenv('TTRSS_XDEBUG_ENABLED') && ($_SESSION["plugin_blacklist"][$class] ?? 0)) {
 
 					// only report once per-plugin per-session
 					if ($_SESSION["plugin_blacklist"][$class] < 2) {
@@ -464,6 +476,8 @@ class PluginHost {
 
 					$_SESSION["safe_mode"] = 1;
 
+					$p_scope->getSpan()->setTag('error', 'plugin is blacklisted');
+					$p_scope->close();
 					continue;
 				}
 
@@ -474,16 +488,21 @@ class PluginHost {
 
 				} catch (Error $err) {
 					user_error($err, E_USER_WARNING);
+
+					$p_scope->getSpan()->setTag('error', $err);
+					$p_scope->close();
 					continue;
 				}
 
 				if (class_exists($class) && is_subclass_of($class, "Plugin")) {
-
 					$plugin = new $class($this);
 					$plugin_api = $plugin->api_version();
 
 					if ($plugin_api < self::API_VERSION) {
 						user_error("Plugin $class is not compatible with current API version (need: " . self::API_VERSION . ", got: $plugin_api)", E_USER_WARNING);
+
+						$p_scope->getSpan()->setTag('error', 'plugin is not compatible with API version');
+						$p_scope->close();
 						continue;
 					}
 
@@ -491,6 +510,8 @@ class PluginHost {
 						_bindtextdomain($class, dirname($file) . "/locale");
 						_bind_textdomain_codeset($class, "UTF-8");
 					}
+
+					$i_scope = Tracer::start('init and register plugin');
 
 					try {
 						switch ($kind) {
@@ -516,11 +537,17 @@ class PluginHost {
 					} catch (Error $err) {
 						user_error($err, E_USER_WARNING);
 					}
+
+					$i_scope->close();
+
 				}
 			}
+			$p_scope->close();
 		}
 
 		$this->load_data();
+
+		$scope->close();
 	}
 
 	function is_system(Plugin $plugin): bool {
@@ -588,7 +615,7 @@ class PluginHost {
 	function lookup_command(string $command) {
 		$command = "-" . strtolower($command);
 
-		if (array_key_exists($command, $this->commands) && is_array($this->commands[$command])) {
+		if (array_key_exists($command, $this->commands)) {
 			return $this->commands[$command]["class"];
 		} else {
 			return false;
@@ -613,7 +640,9 @@ class PluginHost {
 	}
 
 	private function load_data(): void {
-		if ($this->owner_uid && !$this->data_loaded && get_schema_version() > 100)  {
+		$scope = Tracer::start(__METHOD__);
+
+		if ($this->owner_uid && !$this->data_loaded && Config::get_schema_version() > 100)  {
 			$sth = $this->pdo->prepare("SELECT name, content FROM ttrss_plugin_storage
 				WHERE owner_uid = ?");
 			$sth->execute([$this->owner_uid]);
@@ -624,10 +653,13 @@ class PluginHost {
 
 			$this->data_loaded = true;
 		}
+
+		$scope->close();
 	}
 
 	private function save_data(string $plugin): void {
 		if ($this->owner_uid) {
+			$scope = Tracer::start(__METHOD__);
 
 			if (!$this->pdo_data)
 				$this->pdo_data = Db::instance()->pdo_connect();
@@ -655,6 +687,7 @@ class PluginHost {
 			}
 
 			$this->pdo_data->commit();
+			$scope->close();
 		}
 	}
 
@@ -781,7 +814,7 @@ class PluginHost {
 
 	// Plugin feed functions are *EXPERIMENTAL*!
 
-	// cat_id: only -1 is supported (Special)
+	// cat_id: only -1 (Feeds::CATEGORY_SPECIAL) is supported (Special)
 	function add_feed(int $cat_id, string $title, string $icon, Plugin $sender): int {
 
 		if (empty($this->feeds[$cat_id]))

@@ -106,6 +106,8 @@ class RPC extends Handler_Protected {
 	}
 
 	function getAllCounters(): void {
+		$scope = Tracer::start(__METHOD__);
+
 		@$seq = (int) $_REQUEST['seq'];
 
 		$feed_id_count = (int) ($_REQUEST["feed_id_count"] ?? -1);
@@ -132,6 +134,7 @@ class RPC extends Handler_Protected {
 			'seq' => $seq
 		];
 
+		$scope->close();
 		print json_encode($reply);
 	}
 
@@ -451,7 +454,7 @@ class RPC extends Handler_Protected {
 
 		$params["safe_mode"] = !empty($_SESSION["safe_mode"]);
 		$params["check_for_updates"] = Config::get(Config::CHECK_FOR_UPDATES);
-		$params["icons_url"] = Config::get(Config::ICONS_URL);
+		$params["icons_url"] = Config::get_self_url() . '/public.php';
 		$params["cookie_lifetime"] = Config::get(Config::SESSION_COOKIE_LIFETIME);
 		$params["default_view_mode"] = get_pref(Prefs::_DEFAULT_VIEW_MODE);
 		$params["default_view_limit"] = (int) get_pref(Prefs::_DEFAULT_VIEW_LIMIT);
